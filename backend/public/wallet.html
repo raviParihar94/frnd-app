@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Wallet & Recharge</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px 16px; background:#0f1115; color:#eee; }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  .muted { color: #999; font-size: 0.85rem; }
+  .card { background:#1a1d24; border-radius: 12px; padding: 16px; margin: 12px 0; }
+  .balance { font-size: 2rem; font-weight: 700; }
+  input { width:100%; padding:10px; margin:6px 0; border-radius:8px; border:1px solid #333; background:#111; color:#eee; box-sizing:border-box; }
+  button { width:100%; padding:12px; border:none; border-radius:8px; background:#6c5ce7; color:#fff; font-size:1rem; font-weight:600; cursor:pointer; margin-top:8px; }
+  button:disabled { opacity:0.5; cursor:not-allowed; }
+  .pack { display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid #262a33; }
+  .pack:last-child { border-bottom:none; }
+  .pack button { width:auto; padding:8px 16px; margin:0; }
+  #status { margin-top:10px; font-size:0.9rem; min-height: 1.2em; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+  <h1>Wallet & Recharge</h1>
+  <p class="muted">Phase 2 demo — Phone OTP login, then top up tokens via UPI/Card (Razorpay).</p>
+
+  <div id="loginCard" class="card">
+    <div id="step-phone">
+      <input id="phoneInput" placeholder="+91XXXXXXXXXX" />
+      <button id="sendOtpBtn">Send OTP</button>
+    </div>
+    <div id="step-otp" class="hidden">
+      <input id="otpInput" placeholder="6-digit OTP" />
+      <button id="verifyOtpBtn">Verify & Login</button>
+    </div>
+  </div>
+
+  <div id="walletCard" class="card hidden">
+    <div class="muted">Token balance</div>
+    <div class="balance" id="balanceValue">—</div>
+  </div>
+
+  <div id="packsCard" class="card hidden">
+    <div class="muted" style="margin-bottom:8px;">Recharge packs</div>
+    <div id="packsList"></div>
+  </div>
+
+  <div id="status"></div>
+
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <script>
+    let accessToken = null;
+    const $ = (id) => document.getElementById(id);
+
+    function setStatus(msg, isError) {
+      const el = $('status');
+      el.textContent = msg || '';
+      el.style.color = isError ? '#ff6b6b' : '#7bd88f';
+    }
+
+    async function api(path, options = {}) {
+      const res = await fetch(path, {
+        method: options.method || 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken ? { Authorization: 'Bearer ' + accessToken } : {}),
+        },
+        body: options.body ? JSON.stringify(options.body) : undefined,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ('Request failed: ' + res.status));
+      return data;
+    }
+
+    $('sendOtpBtn').addEventListener('click', async () => {
+      try {
+        setStatus('Sending OTP...');
+        await api('/api/auth/otp/request', { method: 'POST', body: { phone: $('phoneInput').value.trim() } });
+        $('step-phone').classList.add('hidden');
+        $('step-otp').classList.remove('hidden');
+        setStatus('OTP sent — check the backend logs in dev mode (SMS_PROVIDER=console).');
+      } catch (err) {
+        setStatus(err.message, true);
+      }
+    });
+
+    $('verifyOtpBtn').addEventListener('click', async () => {
+      try {
+        setStatus('Verifying...');
+        const phone = $('phoneInput').value.trim();
+        const otp = $('otpInput').value.trim();
+        const result = await api('/api/auth/otp/verify', { method: 'POST', body: { phone, otp } });
+        accessToken = result.accessToken;
+        $('loginCard').classList.add('hidden');
+        $('walletCard').classList.remove('hidden');
+        $('packsCard').classList.remove('hidden');
+        setStatus('Logged in.');
+        await refreshBalance();
+        await loadPacks();
+      } catch (err) {
+        setStatus(err.message, true);
+      }
+    });
+
+    async function refreshBalance() {
+      const { tokenBalance } = await api('/api/payments/balance');
+      $('balanceValue').textContent = tokenBalance + ' tokens';
+      return tokenBalance;
+    }
+
+    async function loadPacks() {
+      const { packs } = await api('/api/payments/packs');
+      const list = $('packsList');
+      list.innerHTML = '';
+      packs.forEach((pack) => {
+        const row = document.createElement('div');
+        row.className = 'pack';
+        row.innerHTML =
+          '<div><div><strong>' + pack.name + '</strong></div>' +
+          '<div class="muted">\u20B9' + pack.amountInr + ' \u2192 ' + pack.tokens + ' tokens</div></div>';
+        const btn = document.createElement('button');
+        btn.textContent = 'Recharge';
+        btn.addEventListener('click', () => startCheckout(pack.id, btn));
+        row.appendChild(btn);
+        list.appendChild(row);
+      });
+    }
+
+    async function startCheckout(packId, btn) {
+      try {
+        btn.disabled = true;
+        setStatus('Creating order...');
+        const order = await api('/api/payments/orders', { method: 'POST', body: { packId } });
+
+        const rzp = new Razorpay({
+          key: order.keyId,
+          amount: order.amountPaise,
+          currency: order.currency,
+          order_id: order.razorpayOrderId,
+          name: 'Wallet Recharge',
+          description: order.pack.name,
+          handler: function () {
+            // The client-side handler is NOT trusted to credit tokens — only
+            // the server-verified webhook does that. We just poll balance.
+            setStatus('Payment submitted. Confirming with server...');
+            pollBalance(btn);
+          },
+          modal: {
+            ondismiss: function () {
+              setStatus('Checkout closed.');
+              btn.disabled = false;
+            },
+          },
+        });
+
+        rzp.on('payment.failed', function () {
+          setStatus('Payment failed.', true);
+          btn.disabled = false;
+        });
+
+        rzp.open();
+      } catch (err) {
+        setStatus(err.message, true);
+        btn.disabled = false;
+      }
+    }
+
+    async function pollBalance(btn) {
+      const before = $('balanceValue').textContent;
+      for (let i = 0; i < 10; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        await refreshBalance();
+        if ($('balanceValue').textContent !== before) {
+          setStatus('Balance updated!');
+          btn.disabled = false;
+          return;
+        }
+      }
+      setStatus('Still waiting on payment confirmation from the webhook — refresh in a bit.');
+      btn.disabled = false;
+    }
+  </script>
+</body>
+</html>

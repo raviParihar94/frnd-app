@@ -1,0 +1,81 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: frnd-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: frnd_clone
+    ports:
+      - "5433:5432"
+    volumes:
+      - frnd_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d frnd_clone"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: frnd-redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: frnd-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: 4000
+      NODE_ENV: development
+      CORS_ORIGIN: "*"
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/frnd_clone
+      PGSSL: "false"
+      JWT_ACCESS_SECRET: local_dev_access_secret_change_me_please
+      JWT_REFRESH_SECRET: local_dev_refresh_secret_change_me_please
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 30d
+      OTP_LENGTH: 6
+      OTP_EXPIRY_MINUTES: 5
+      OTP_MAX_ATTEMPTS: 5
+      OTP_REQUEST_COOLDOWN_SECONDS: 30
+      SMS_PROVIDER: console
+      # Fill these in to enable real payments (Razorpay test-mode keys work fine).
+      # The app boots and runs fine without them; /api/payments/orders and the
+      # webhook will just return a clear "Razorpay is not configured" error until set.
+      RAZORPAY_KEY_ID: ""
+      RAZORPAY_KEY_SECRET: ""
+      RAZORPAY_WEBHOOK_SECRET: ""
+      # Matchmaking (Phase 3)
+      REDIS_URL: redis://redis:6379
+      QUEUE_TIMEOUT_SECONDS: 20
+      TOKEN_TICK_INTERVAL_SECONDS: 60
+      TEXT_CHAT_TOKENS_PER_MIN: 5
+      VOICE_CALL_TOKENS_PER_MIN: 10
+      VIDEO_CALL_TOKENS_PER_MIN: 15
+      # Fill these in to enable real voice/video calls (free Agora testing
+      # credentials work fine). The app boots fine without them; the call
+      # screen will just show a clear "Agora is not configured" error.
+      AGORA_APP_ID: ""
+      AGORA_APP_CERTIFICATE: ""
+      AGORA_TOKEN_EXPIRE_SECONDS: 3600
+
+volumes:
+  frnd_pgdata:

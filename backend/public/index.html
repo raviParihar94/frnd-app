@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FRND-clone</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, sans-serif; margin: 0; background:#0b0c10; color:#eee;
+    min-height: 100vh; display:flex; flex-direction:column;
+  }
+  .screen { max-width: 480px; margin: 0 auto; width:100%; padding: 20px 16px; flex:1; display:flex; flex-direction:column; }
+  h1 { font-size: 1.3rem; margin: 0 0 4px; }
+  h2 { font-size: 1.05rem; margin: 0 0 8px; }
+  .muted { color: #999; font-size: 0.85rem; }
+  .card { background:#181b21; border-radius: 14px; padding: 16px; margin: 12px 0; }
+  input, select, textarea { width:100%; padding:12px; margin:6px 0; border-radius:10px; border:1px solid #333; background:#111; color:#eee; font-size:1rem; font-family: inherit; }
+  .big-btn { width:100%; padding:15px; border:none; border-radius:14px; background:#6c5ce7; color:#fff; font-size:1.02rem; font-weight:700; cursor:pointer; margin-top:10px; }
+  .big-btn.secondary { background:#2a2d36; }
+  .big-btn.danger { background:#e74c3c; }
+  .big-btn:disabled { opacity:0.5; cursor:not-allowed; }
+  .row { display:flex; gap: 8px; }
+  .row > * { flex: 1; }
+  .hidden { display:none !important; }
+  .error-text { color:#ff6b6b; font-size:0.85rem; margin-top:6px; min-height:1.1em; }
+
+  /* avatar grid */
+  .avatar-grid { display:grid; grid-template-columns: repeat(4, 1fr); gap:8px; margin: 10px 0; }
+  .avatar-opt { font-size:1.8rem; background:#111; border:2px solid #333; border-radius:12px; padding:10px 0; cursor:pointer; text-align:center; }
+  .avatar-opt.selected { border-color:#6c5ce7; background:#22203a; }
+
+  .lang-grid { display:grid; grid-template-columns: repeat(2, 1fr); gap:6px; margin: 8px 0; }
+  .lang-chip { padding:8px; border-radius:8px; border:1px solid #333; background:#111; text-align:center; cursor:pointer; font-size:0.85rem; }
+  .lang-chip.selected { border-color:#6c5ce7; background:#22203a; }
+
+  /* home shell */
+  #homeView { flex:1; display:flex; flex-direction:column; }
+  .tab-content { flex:1; overflow-y:auto; padding: 16px; }
+  .tab-bar { display:flex; border-top:1px solid #222; background:#111318; }
+  .tab-btn { flex:1; background:none; border:none; color:#888; padding:12px 0; font-size:0.72rem; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:2px; }
+  .tab-btn .icon { font-size:1.3rem; }
+  .tab-btn.active { color:#6c5ce7; }
+
+  /* history list */
+  .history-item { display:flex; align-items:center; gap:10px; padding:12px 0; border-bottom:1px solid #22252c; }
+  .history-item .avatar { font-size:1.6rem; width:40px; height:40px; border-radius:50%; background:#22252c; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .history-item .meta { flex:1; min-width:0; }
+  .history-item .name { font-weight:600; }
+  .history-item .sub { color:#888; font-size:0.78rem; }
+  .badge { font-size:0.7rem; padding:2px 7px; border-radius:999px; background:#262a33; color:#bbb; }
+
+  /* wallet */
+  .pack-row { display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid #22252c; }
+  .pack-row:last-child { border-bottom:none; }
+  .pack-row button { padding:8px 16px; margin:0; width:auto; border:none; border-radius:8px; background:#6c5ce7; color:#fff; font-weight:600; cursor:pointer; }
+
+  /* call screen */
+  #callView { position:fixed; inset:0; background:#0b0c10; display:flex; flex-direction:column; z-index:20; }
+  .call-stage { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding: 20px; }
+  .avatar-circle { width:120px; height:120px; border-radius:50%; background:#2a2d36; display:flex; align-items:center; justify-content:center; font-size:3rem; margin-bottom:16px; }
+  #remoteVideo, #localVideo { width:100%; max-width:400px; aspect-ratio: 3/4; background:#000; border-radius:14px; margin-bottom:10px; overflow:hidden; }
+  #localVideo { position: fixed; bottom: 150px; right: 16px; width: 90px; aspect-ratio: 3/4; z-index: 5; border: 2px solid #333; }
+  .call-status { font-size: 1.1rem; font-weight:600; margin-bottom:2px; }
+  .call-sub { color:#999; }
+
+  /* text chat inside a call */
+  #textChatArea { flex:1; width:100%; display:flex; flex-direction:column; padding: 0 12px; }
+  #chatMessages { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:6px; padding: 10px 0; }
+  .msg { max-width:75%; padding:8px 12px; border-radius:14px; font-size:0.9rem; }
+  .msg.me { align-self:flex-end; background:#6c5ce7; }
+  .msg.them { align-self:flex-start; background:#22252c; }
+  .typing-indicator { color:#888; font-size:0.8rem; height: 1.2em; }
+  #chatInputRow { display:flex; gap:8px; padding: 8px 0 4px; }
+  #chatInputRow input { margin:0; }
+  #chatInputRow button { width:auto; padding:0 16px; margin:0; border:none; border-radius:10px; background:#6c5ce7; color:#fff; font-weight:700; cursor:pointer; }
+
+  .control-bar { display:flex; justify-content:center; gap:14px; padding: 16px 0 max(24px, env(safe-area-inset-bottom)); }
+  .ctrl-btn { width:58px; height:58px; border-radius:50%; border:none; background:#2a2d36; color:#fff; font-size:1.3rem; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+  .ctrl-btn.active { background:#6c5ce7; }
+  .ctrl-btn.end { background:#e74c3c; }
+
+  .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,0.7); display:flex; align-items:flex-end; justify-content:center; z-index:50; }
+  .modal-sheet { background:#181b21; border-radius: 18px 18px 0 0; padding:20px; width:100%; max-width:480px; }
+  .modal-sheet h2 { margin:0 0 8px; }
+
+  #log { background:#111; border-radius:8px; padding:8px; max-height: 70px; overflow-y:auto; font-family: ui-monospace, monospace; font-size: 0.65rem; white-space: pre-wrap; margin-top: 10px; }
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<div id="loginView" class="screen">
+  <h1>FRND-clone</h1>
+  <p class="muted">Random text, voice & video chat — Indian languages.</p>
+  <div class="card">
+    <div id="step-phone">
+      <input id="phoneInput" placeholder="+91XXXXXXXXXX" />
+      <button class="big-btn" id="sendOtpBtn">Send OTP</button>
+    </div>
+    <div id="step-otp" class="hidden">
+      <input id="otpInput" placeholder="6-digit OTP" />
+      <button class="big-btn" id="verifyOtpBtn">Verify & Continue</button>
+    </div>
+    <div class="error-text" id="loginError"></div>
+  </div>
+</div>
+
+<!-- ============ PROFILE SETUP (first-time) ============ -->
+<div id="profileSetupView" class="screen hidden">
+  <h1>Set up your profile</h1>
+  <p class="muted">Pick an avatar and nickname — no real photo needed.</p>
+  <div class="card">
+    <h2>Avatar</h2>
+    <div class="avatar-grid" id="setupAvatarGrid"></div>
+    <h2>Nickname</h2>
+    <input id="setupNickname" maxlength="30" placeholder="e.g. Sunny_92" />
+    <h2>Gender</h2>
+    <select id="setupGender">
+      <option value="male">Male</option>
+      <option value="female">Female</option>
+      <option value="other">Other</option>
+      <option value="prefer_not_to_say">Prefer not to say</option>
+    </select>
+    <h2>Languages you speak</h2>
+    <div class="lang-grid" id="setupLangGrid"></div>
+    <button class="big-btn" id="saveProfileSetupBtn">Continue</button>
+    <div class="error-text" id="setupError"></div>
+  </div>
+</div>
+
+<!-- ============ HOME (tabs) ============ -->
+<div id="homeView" class="hidden">
+  <div class="tab-content" id="tab-chat">
+    <h1>Start a chat</h1>
+    <p class="muted">Get matched instantly with someone new.</p>
+    <div class="card">
+      <div class="row">
+        <select id="callTypeSelect">
+          <option value="voice">🎧 Voice</option>
+          <option value="video">📹 Video</option>
+          <option value="text">💬 Text</option>
+        </select>
+        <select id="languageSelect"></select>
+      </div>
+      <button class="big-btn" id="joinQueueBtn">Find someone to talk to</button>
+      <button class="big-btn secondary hidden" id="leaveQueueBtn">Cancel search</button>
+      <div class="muted" id="queueStatus" style="margin-top:8px;"></div>
+    </div>
+  </div>
+
+  <div class="tab-content hidden" id="tab-history">
+    <h1>Chat history</h1>
+    <div class="card" id="historyList"><p class="muted">Loading...</p></div>
+  </div>
+
+  <div class="tab-content hidden" id="tab-wallet">
+    <h1>Wallet</h1>
+    <div class="card">
+      <div class="muted">Token balance</div>
+      <div style="font-size:2rem; font-weight:700;" id="walletBalance">—</div>
+    </div>
+    <div class="card">
+      <div class="muted" style="margin-bottom:6px;">Recharge packs</div>
+      <div id="packsList"></div>
+    </div>
+  </div>
+
+  <div class="tab-content hidden" id="tab-profile">
+    <h1>Profile</h1>
+    <div class="card">
+      <div class="muted" id="profilePhone"></div>
+      <h2 style="margin-top:12px;">Avatar</h2>
+      <div class="avatar-grid" id="profileAvatarGrid"></div>
+      <h2>Nickname</h2>
+      <input id="profileNickname" maxlength="30" />
+      <h2>Gender</h2>
+      <select id="profileGender">
+        <option value="male">Male</option>
+        <option value="female">Female</option>
+        <option value="other">Other</option>
+        <option value="prefer_not_to_say">Prefer not to say</option>
+      </select>
+      <h2>Languages</h2>
+      <div class="lang-grid" id="profileLangGrid"></div>
+      <button class="big-btn" id="saveProfileBtn">Save changes</button>
+      <div class="error-text" id="profileError"></div>
+    </div>
+    <button class="big-btn danger" id="logoutBtn">Log out</button>
+  </div>
+
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="chat"><span class="icon">💬</span>Chat</button>
+    <button class="tab-btn" data-tab="history"><span class="icon">🕑</span>History</button>
+    <button class="tab-btn" data-tab="wallet"><span class="icon">💰</span>Wallet</button>
+    <button class="tab-btn" data-tab="profile"><span class="icon">👤</span>Profile</button>
+  </div>
+</div>
+
+<!-- ============ CALL SCREEN ============ -->
+<div id="callView" class="hidden">
+  <div class="call-stage" id="avVoiceStage">
+    <video id="remoteVideo" class="hidden" autoplay playsinline></video>
+    <video id="localVideo" class="hidden" autoplay playsinline muted></video>
+    <div class="avatar-circle" id="avatarPlaceholder">🎧</div>
+    <div class="call-status" id="callStatusText">Connecting...</div>
+    <div class="call-sub" id="partnerName"></div>
+    <div class="call-sub" id="balanceText"></div>
+  </div>
+
+  <div id="textChatArea" class="hidden">
+    <div class="muted" style="padding-top:10px;">Chatting with <span id="textPartnerName"></span></div>
+    <div id="chatMessages"></div>
+    <div class="typing-indicator" id="typingIndicator"></div>
+    <div id="chatInputRow">
+      <input id="chatInput" placeholder="Type a message..." />
+      <button id="sendChatBtn">Send</button>
+    </div>
+  </div>
+
+  <div class="control-bar">
+    <button class="ctrl-btn active" id="muteBtn" title="Mute">🎤</button>
+    <button class="ctrl-btn active hidden" id="videoBtn" title="Video">📹</button>
+    <button class="ctrl-btn" id="skipBtn" title="Skip">⏭️</button>
+    <button class="ctrl-btn end" id="endBtn" title="End">📞</button>
+  </div>
+</div>
+
+<!-- Low balance modal -->
+<div id="lowBalanceModal" class="modal-backdrop hidden">
+  <div class="modal-sheet">
+    <h2>⚠️ Balance running low</h2>
+    <p class="muted">Recharge now or the call will end automatically in <span id="countdown">30</span>s.</p>
+    <button class="big-btn" id="quickRechargeBtn">⚡ Quick 1-Tap Recharge (₹49)</button>
+    <button class="big-btn secondary" id="dismissWarningBtn">Dismiss</button>
+  </div>
+</div>
+
+<div id="log" class="hidden"></div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.0.js"></script>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>
+(function () {
+  const LANGS = [
+    ['en', 'English'], ['hi', 'Hindi'], ['te', 'Telugu'], ['ta', 'Tamil'],
+    ['kn', 'Kannada'], ['mr', 'Marathi'], ['pa', 'Punjabi'], ['bho', 'Bhojpuri'],
+  ];
+
+  let accessToken = localStorage.getItem('frnd_access_token') || null;
+  let refreshToken = localStorage.getItem('frnd_refresh_token') || null;
+  let socket = null;
+  let me = null; // current user profile
+  let avatarCatalog = [];
+  let currentSession = null;
+  let rtcClient = null, localAudioTrack = null, localVideoTrack = null;
+  let countdownTimer = null, typingTimeout = null;
+
+  const $ = (id) => document.getElementById(id);
+  function log(msg) {
+    const el = $('log');
+    el.classList.remove('hidden');
+    el.textContent += msg + '\n';
+    el.scrollTop = el.scrollHeight;
+  }
+  function show(el) { el.classList.remove('hidden'); }
+  function hide(el) { el.classList.add('hidden'); }
+
+  async function api(path, options = {}) {
+    const res = await fetch(path, {
+      method: options.method || 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: 'Bearer ' + accessToken } : {}),
+      },
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+    if (res.status === 401 && !options._retried && refreshToken) {
+      const refreshed = await tryRefresh();
+      if (refreshed) return api(path, { ...options, _retried: true });
+    }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('Request failed: ' + res.status));
+    return data;
+  }
+
+  async function tryRefresh() {
+    try {
+      const res = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      accessToken = data.accessToken;
+      localStorage.setItem('frnd_access_token', accessToken);
+      return true;
+    } catch { return false; }
+  }
+
+  function persistTokens(tokens) {
+    accessToken = tokens.accessToken;
+    refreshToken = tokens.refreshToken;
+    localStorage.setItem('frnd_access_token', accessToken);
+    localStorage.setItem('frnd_refresh_token', refreshToken);
+  }
+
+  function clearSession() {
+    accessToken = null; refreshToken = null; me = null;
+    localStorage.removeItem('frnd_access_token');
+    localStorage.removeItem('frnd_refresh_token');
+    if (socket) { socket.disconnect(); socket = null; }
+  }
+
+  // ---------- View routing ----------
+  function showView(view) {
+    ['loginView', 'profileSetupView', 'homeView', 'callView'].forEach((id) => hide($(id)));
+    show($(view));
+  }
+
+  // ---------- Boot ----------
+  async function boot() {
+    if (!accessToken) { showView('loginView'); return; }
+    try {
+      me = await api('/api/users/me');
+      if (!me.profileComplete) {
+        await loadAvatarCatalog();
+        renderAvatarGrid($('setupAvatarGrid'), null);
+        renderLangGrid($('setupLangGrid'), []);
+        showView('profileSetupView');
+      } else {
+        await enterHome();
+      }
+    } catch (err) {
+      log('Boot error: ' + err.message);
+      clearSession();
+      showView('loginView');
+    }
+  }
+
+  // ---------- Login ----------
+  $('sendOtpBtn').addEventListener('click', async () => {
+    $('loginError').textContent = '';
+    try {
+      await api('/api/auth/otp/request', { method: 'POST', body: { phone: $('phoneInput').value.trim() } });
+      hide($('step-phone')); show($('step-otp'));
+    } catch (err) { $('loginError').textContent = err.message; }
+  });
+
+  $('verifyOtpBtn').addEventListener('click', async () => {
+    $('loginError').textContent = '';
+    try {
+      const phone = $('phoneInput').value.trim();
+      const otp = $('otpInput').value.trim();
+      const result = await api('/api/auth/otp/verify', { method: 'POST', body: { phone, otp } });
+      persistTokens(result);
+      await boot();
+    } catch (err) { $('loginError').textContent = err.message; }
+  });
+
+  // ---------- Profile setup / edit shared helpers ----------
+  async function loadAvatarCatalog() {
+    if (avatarCatalog.length) return;
+    const res = await api('/api/users/avatars');
+    avatarCatalog = res.avatars;
+  }
+
+  function renderAvatarGrid(container, selected) {
+    container.innerHTML = '';
+    avatarCatalog.forEach((emoji) => {
+      const btn = document.createElement('div');
+      btn.className = 'avatar-opt' + (emoji === selected ? ' selected' : '');
+      btn.textContent = emoji;
+      btn.dataset.avatar = emoji;
+      btn.addEventListener('click', () => {
+        container.querySelectorAll('.avatar-opt').forEach((n) => n.classList.remove('selected'));
+        btn.classList.add('selected');
+      });
+      container.appendChild(btn);
+    });
+  }
+  function getSelectedAvatar(container) {
+    const el = container.querySelector('.avatar-opt.selected');
+    return el ? el.dataset.avatar : null;
+  }
+
+  function renderLangGrid(container, selected) {
+    container.innerHTML = '';
+    LANGS.forEach(([code, label]) => {
+      const chip = document.createElement('div');
+      chip.className = 'lang-chip' + (selected.includes(code) ? ' selected' : '');
+      chip.textContent = label;
+      chip.dataset.lang = code;
+      chip.addEventListener('click', () => chip.classList.toggle('selected'));
+      container.appendChild(chip);
+    });
+  }
+  function getSelectedLangs(container) {
+    return [...container.querySelectorAll('.lang-chip.selected')].map((n) => n.dataset.lang);
+  }
+
+  $('saveProfileSetupBtn').addEventListener('click', async () => {
+    $('setupError').textContent = '';
+    const avatarUrl = getSelectedAvatar($('setupAvatarGrid'));
+    const nickname = $('setupNickname').value.trim();
+    const gender = $('setupGender').value;
+    const languages = getSelectedLangs($('setupLangGrid'));
+
+    if (!avatarUrl) { $('setupError').textContent = 'Pick an avatar.'; return; }
+    if (!nickname) { $('setupError').textContent = 'Enter a nickname.'; return; }
+    if (languages.length === 0) { $('setupError').textContent = 'Pick at least one language.'; return; }
+
+    try {
+      me = await api('/api/users/me', { method: 'PATCH', body: { avatarUrl, nickname, gender, languages } });
+      await enterHome();
+    } catch (err) { $('setupError').textContent = err.message; }
+  });
+
+  // ---------- Home ----------
+  async function enterHome() {
+    showView('homeView');
+    populateLanguageSelect();
+    connectSocket();
+    switchTab('chat');
+    hydrateProfileTab();
+  }
+
+  function populateLanguageSelect() {
+    const sel = $('languageSelect');
+    sel.innerHTML = '';
+    LANGS.forEach(([code, label]) => {
+      const opt = document.createElement('option');
+      opt.value = code; opt.textContent = label;
+      sel.appendChild(opt);
+    });
+  }
+
+  document.querySelectorAll('.tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+
+  function switchTab(tab) {
+    ['chat', 'history', 'wallet', 'profile'].forEach((t) => {
+      hide($('tab-' + t));
+      document.querySelector('.tab-btn[data-tab="' + t + '"]').classList.remove('active');
+    });
+    show($('tab-' + tab));
+    document.querySelector('.tab-btn[data-tab="' + tab + '"]').classList.add('active');
+    if (tab === 'history') loadHistory();
+    if (tab === 'wallet') loadWallet();
+  }
+
+  // ---------- History tab ----------
+  async function loadHistory() {
+    $('historyList').innerHTML = '<p class="muted">Loading...</p>';
+    try {
+      const { history } = await api('/api/sessions/history');
+      if (history.length === 0) {
+        $('historyList').innerHTML = '<p class="muted">No chats yet — go say hi!</p>';
+        return;
+      }
+      $('historyList').innerHTML = '';
+      history.forEach((h) => {
+        const row = document.createElement('div');
+        row.className = 'history-item';
+        const icon = h.callType === 'video' ? '📹' : h.callType === 'voice' ? '🎧' : '💬';
+        const when = timeAgo(new Date(h.startedAt));
+        const durationText = h.durationSeconds != null
+          ? Math.round(h.durationSeconds / 60) + ' min'
+          : (h.status === 'active' ? 'ongoing' : '—');
+        row.innerHTML =
+          '<div class="avatar">' + (h.partnerAvatarUrl || '👤') + '</div>' +
+          '<div class="meta">' +
+          '<div class="name">' + (h.partnerNickname || 'Anonymous') + '</div>' +
+          '<div class="sub">' + icon + ' ' + h.language.toUpperCase() + ' · ' + when + '</div>' +
+          '</div>' +
+          '<div class="badge">' + durationText + '</div>';
+        $('historyList').appendChild(row);
+      });
+    } catch (err) {
+      $('historyList').innerHTML = '<p class="muted">Could not load history: ' + err.message + '</p>';
+    }
+  }
+
+  function timeAgo(date) {
+    const secs = Math.floor((Date.now() - date.getTime()) / 1000);
+    if (secs < 60) return 'just now';
+    if (secs < 3600) return Math.floor(secs / 60) + 'm ago';
+    if (secs < 86400) return Math.floor(secs / 3600) + 'h ago';
+    return Math.floor(secs / 86400) + 'd ago';
+  }
+
+  // ---------- Wallet tab ----------
+  async function loadWallet() {
+    try {
+      const { tokenBalance } = await api('/api/payments/balance');
+      $('walletBalance').textContent = tokenBalance + ' tokens';
+      const { packs } = await api('/api/payments/packs');
+      $('packsList').innerHTML = '';
+      packs.forEach((pack) => {
+        const row = document.createElement('div');
+        row.className = 'pack-row';
+        row.innerHTML =
+          '<div><div><strong>' + pack.name + '</strong></div>' +
+          '<div class="muted">\u20B9' + pack.amountInr + ' \u2192 ' + pack.tokens + ' tokens</div></div>';
+        const btn = document.createElement('button');
+        btn.textContent = 'Recharge';
+        btn.addEventListener('click', () => startCheckout(pack.id, () => loadWallet()));
+        row.appendChild(btn);
+        $('packsList').appendChild(row);
+      });
+    } catch (err) { log('Wallet load error: ' + err.message); }
+  }
+
+  async function startCheckout(packId, onDone) {
+    try {
+      const order = await api('/api/payments/orders', { method: 'POST', body: { packId } });
+      const rzp = new Razorpay({
+        key: order.keyId,
+        amount: order.amountPaise,
+        currency: order.currency,
+        order_id: order.razorpayOrderId,
+        name: 'Wallet Recharge',
+        description: order.pack.name,
+        handler: function () {
+          log('Payment submitted, confirming with server...');
+          setTimeout(onDone, 3000);
+        },
+      });
+      rzp.open();
+    } catch (err) { log('Recharge failed: ' + err.message); }
+  }
+
+  // ---------- Profile tab ----------
+  async function hydrateProfileTab() {
+    await loadAvatarCatalog();
+    $('profilePhone').textContent = maskPhone(me.phone);
+    renderAvatarGrid($('profileAvatarGrid'), me.avatarUrl);
+    $('profileNickname').value = me.nickname || '';
+    $('profileGender').value = me.gender || 'prefer_not_to_say';
+    renderLangGrid($('profileLangGrid'), me.languages || []);
+  }
+
+  function maskPhone(phone) {
+    return phone.slice(0, 3) + '••••••' + phone.slice(-2);
+  }
+
+  $('saveProfileBtn').addEventListener('click', async () => {
+    $('profileError').textContent = '';
+    const avatarUrl = getSelectedAvatar($('profileAvatarGrid'));
+    const nickname = $('profileNickname').value.trim();
+    const gender = $('profileGender').value;
+    const languages = getSelectedLangs($('profileLangGrid'));
+    if (languages.length === 0) { $('profileError').textContent = 'Pick at least one language.'; return; }
+    try {
+      me = await api('/api/users/me', { method: 'PATCH', body: { avatarUrl, nickname, gender, languages } });
+      $('profileError').textContent = '';
+      $('profileError').style.color = '#7bd88f';
+      $('profileError').textContent = 'Saved!';
+      $('profileError').style.color = '#ff6b6b';
+    } catch (err) { $('profileError').textContent = err.message; }
+  });
+
+  $('logoutBtn').addEventListener('click', () => {
+    clearSession();
+    location.reload();
+  });
+
+  // ---------- Socket / matchmaking ----------
+  function connectSocket() {
+    if (socket) return;
+    socket = io({ auth: { token: accessToken } });
+
+    socket.on('connect_error', (e) => log('Socket error: ' + e.message));
+    socket.on('ERROR', (e) => log('ERROR: ' + e.message));
+
+    socket.on('QUEUE_JOINED', () => { $('queueStatus').textContent = 'Searching for a match...'; });
+    socket.on('QUEUE_TIMEOUT', (e) => { $('queueStatus').textContent = e.message; });
+    socket.on('QUEUE_LEFT', () => { $('queueStatus').textContent = ''; });
+
+    socket.on('MATCH_FOUND', async (e) => {
+      currentSession = { id: e.sessionId, callType: e.callType, language: e.language };
+      enterCallView(e);
+      if (e.callType === 'text') {
+        setupTextChat(e);
+      } else {
+        await joinAgoraChannel(e.sessionId, e.callType);
+      }
+    });
+
+    socket.on('SESSION_ENDED', async (e) => {
+      await leaveAgoraChannel();
+      hideLowBalanceModal();
+      currentSession = null;
+      exitCallView();
+      $('queueStatus').textContent =
+        e.reason === 'insufficient_balance' ? 'Call ended — balance ran out. Recharge to keep chatting!' :
+        e.reason === 'partner_disconnected' ? 'The other person disconnected.' :
+        'Call ended.';
+    });
+
+    socket.on('TOKENS_DEDUCTED', (e) => { $('balanceText').textContent = 'Balance: ' + e.balance + ' tokens'; });
+    socket.on('LOW_BALANCE_WARNING', () => showLowBalanceModal());
+
+    socket.on('CHAT_MESSAGE', (e) => appendChatMessage(e.text, 'them'));
+    socket.on('TYPING', () => {
+      $('typingIndicator').textContent = 'typing...';
+      clearTimeout(typingTimeout);
+      typingTimeout = setTimeout(() => { $('typingIndicator').textContent = ''; }, 2000);
+    });
+  }
+
+  $('joinQueueBtn').addEventListener('click', () => {
+    const callType = $('callTypeSelect').value;
+    const language = $('languageSelect').value;
+    socket.emit('JOIN_QUEUE', { callType, language });
+    hide($('joinQueueBtn')); show($('leaveQueueBtn'));
+    $('queueStatus').textContent = 'Joining queue...';
+  });
+  $('leaveQueueBtn').addEventListener('click', () => {
+    socket.emit('LEAVE_QUEUE');
+    show($('joinQueueBtn')); hide($('leaveQueueBtn'));
+    $('queueStatus').textContent = '';
+  });
+
+  // ---------- Call view ----------
+  function enterCallView(matchInfo) {
+    showView('callView');
+    $('partnerName').textContent = 'Matched with ' + matchInfo.partner.nickname;
+    $('callStatusText').textContent = matchInfo.callType === 'text' ? 'Text chat' : 'Connected';
+    $('balanceText').textContent = '';
+    $('videoBtn').classList.toggle('hidden', matchInfo.callType !== 'video');
+
+    if (matchInfo.callType === 'text') {
+      hide($('avVoiceStage'));
+      hide($('muteBtn')); hide($('videoBtn'));
+    } else {
+      show($('avVoiceStage'));
+      hide($('textChatArea'));
+      show($('muteBtn'));
+      if (matchInfo.callType === 'video') show($('videoBtn'));
+    }
+  }
+
+  function exitCallView() {
+    showView('homeView');
+    show($('joinQueueBtn')); hide($('leaveQueueBtn'));
+    $('chatMessages').innerHTML = '';
+    $('textChatArea').classList.add('hidden');
+  }
+
+  function setupTextChat(matchInfo) {
+    $('textPartnerName').textContent = matchInfo.partner.nickname;
+    $('chatMessages').innerHTML = '';
+    show($('textChatArea'));
+    show($('skipBtn')); show($('endBtn'));
+  }
+
+  $('sendChatBtn').addEventListener('click', sendChat);
+  $('chatInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChat(); else socket.emit('TYPING'); });
+
+  function sendChat() {
+    const text = $('chatInput').value.trim();
+    if (!text) return;
+    socket.emit('CHAT_MESSAGE', { text });
+    appendChatMessage(text, 'me');
+    $('chatInput').value = '';
+  }
+
+  function appendChatMessage(text, who) {
+    const div = document.createElement('div');
+    div.className = 'msg ' + who;
+    div.textContent = text;
+    $('chatMessages').appendChild(div);
+    $('chatMessages').scrollTop = $('chatMessages').scrollHeight;
+  }
+
+  // ---------- Agora ----------
+  async function joinAgoraChannel(sessionId, callType) {
+    try {
+      const tokenInfo = await api('/api/calls/' + sessionId + '/token');
+      rtcClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+      await rtcClient.join(tokenInfo.appId, tokenInfo.channelName, tokenInfo.token, tokenInfo.uid);
+
+      localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+      await rtcClient.publish([localAudioTrack]);
+
+      if (callType === 'video') {
+        localVideoTrack = await AgoraRTC.createCameraVideoTrack();
+        await rtcClient.publish([localVideoTrack]);
+        show($('localVideo'));
+        localVideoTrack.play($('localVideo'));
+        hide($('avatarPlaceholder'));
+      }
+
+      rtcClient.on('user-published', async (user, mediaType) => {
+        await rtcClient.subscribe(user, mediaType);
+        if (mediaType === 'video') { show($('remoteVideo')); hide($('avatarPlaceholder')); user.videoTrack.play($('remoteVideo')); }
+        if (mediaType === 'audio') user.audioTrack.play();
+      });
+      rtcClient.on('user-unpublished', () => hide($('remoteVideo')));
+
+      log('Joined Agora channel ' + tokenInfo.channelName);
+    } catch (err) {
+      log('Agora join failed: ' + err.message);
+      $('callStatusText').textContent = 'Could not start audio/video (' + err.message + ')';
+    }
+  }
+
+  async function leaveAgoraChannel() {
+    try {
+      if (localAudioTrack) { localAudioTrack.close(); localAudioTrack = null; }
+      if (localVideoTrack) { localVideoTrack.close(); localVideoTrack = null; }
+      if (rtcClient) { await rtcClient.leave(); rtcClient = null; }
+    } catch (err) { log('Agora leave error: ' + err.message); }
+    hide($('remoteVideo')); hide($('localVideo'));
+    show($('avatarPlaceholder'));
+  }
+
+  // ---------- Controls ----------
+  $('muteBtn').addEventListener('click', () => {
+    if (!localAudioTrack) return;
+    const nowMuted = localAudioTrack.muted !== true;
+    localAudioTrack.setMuted(nowMuted);
+    $('muteBtn').classList.toggle('active', !nowMuted);
+    $('muteBtn').textContent = nowMuted ? '🔇' : '🎤';
+  });
+  $('videoBtn').addEventListener('click', async () => {
+    if (!localVideoTrack) return;
+    const enabled = !localVideoTrack.enabled;
+    await localVideoTrack.setEnabled(enabled);
+    $('videoBtn').classList.toggle('active', enabled);
+  });
+  $('skipBtn').addEventListener('click', () => socket.emit('SKIP_USER'));
+  $('endBtn').addEventListener('click', () => socket.emit('END_CALL'));
+
+  // ---------- Low balance modal ----------
+  function showLowBalanceModal() {
+    show($('lowBalanceModal'));
+    let secondsLeft = 30;
+    $('countdown').textContent = secondsLeft;
+    clearInterval(countdownTimer);
+    countdownTimer = setInterval(() => {
+      secondsLeft -= 1;
+      $('countdown').textContent = Math.max(secondsLeft, 0);
+      if (secondsLeft <= 0) clearInterval(countdownTimer);
+    }, 1000);
+  }
+  function hideLowBalanceModal() { hide($('lowBalanceModal')); clearInterval(countdownTimer); }
+  $('dismissWarningBtn').addEventListener('click', hideLowBalanceModal);
+  $('quickRechargeBtn').addEventListener('click', () => startCheckout('popular', hideLowBalanceModal));
+
+  boot();
+})();
+</script>
+</body>
+</html>

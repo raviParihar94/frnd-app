@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Call</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, sans-serif; margin: 0; background:#0b0c10; color:#eee;
+    min-height: 100vh; display:flex; flex-direction:column;
+  }
+  .screen { max-width: 480px; margin: 0 auto; width:100%; padding: 20px 16px; flex:1; display:flex; flex-direction:column; }
+  h1 { font-size: 1.3rem; margin: 0 0 4px; }
+  .muted { color: #999; font-size: 0.85rem; }
+  .card { background:#181b21; border-radius: 14px; padding: 16px; margin: 12px 0; }
+  input, select { width:100%; padding:12px; margin:6px 0; border-radius:10px; border:1px solid #333; background:#111; color:#eee; font-size:1rem; }
+  .big-btn { width:100%; padding:16px; border:none; border-radius:14px; background:#6c5ce7; color:#fff; font-size:1.05rem; font-weight:700; cursor:pointer; margin-top:10px; }
+  .big-btn.secondary { background:#2a2d36; }
+  .big-btn.danger { background:#e74c3c; }
+  .big-btn:disabled { opacity:0.5; cursor:not-allowed; }
+  .row { display:flex; gap: 8px; }
+  .row > * { flex: 1; }
+  .hidden { display:none !important; }
+
+  /* --- in-call screen --- */
+  .call-stage { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; }
+  .avatar-circle {
+    width:120px; height:120px; border-radius:50%; background:#2a2d36; display:flex;
+    align-items:center; justify-content:center; font-size:2.5rem; margin-bottom:16px;
+  }
+  #remoteVideo, #localVideo { width:100%; max-width:400px; aspect-ratio: 3/4; background:#000; border-radius:14px; margin-bottom:10px; overflow:hidden; }
+  #localVideo { position: fixed; bottom: 140px; right: 16px; width: 90px; aspect-ratio: 3/4; z-index: 5; border: 2px solid #333; }
+  .call-status { font-size: 1.1rem; font-weight:600; margin-bottom:2px; }
+  .call-timer { color:#999; font-family: ui-monospace, monospace; }
+
+  .control-bar {
+    display:flex; justify-content:center; gap:14px; padding: 16px 0 24px;
+  }
+  .ctrl-btn {
+    width:60px; height:60px; border-radius:50%; border:none; background:#2a2d36; color:#fff;
+    font-size:1.4rem; display:flex; align-items:center; justify-content:center; cursor:pointer;
+  }
+  .ctrl-btn.active { background:#6c5ce7; }
+  .ctrl-btn.end { background:#e74c3c; }
+
+  /* --- low balance modal --- */
+  .modal-backdrop {
+    position:fixed; inset:0; background:rgba(0,0,0,0.7); display:flex; align-items:flex-end;
+    justify-content:center; z-index:50;
+  }
+  .modal-sheet { background:#181b21; border-radius: 18px 18px 0 0; padding:20px; width:100%; max-width:480px; }
+  .modal-sheet h2 { margin:0 0 8px; font-size:1.1rem; }
+
+  #log { background:#111; border-radius:8px; padding:8px; height: 90px; overflow-y:auto; font-family: ui-monospace, monospace; font-size: 0.7rem; white-space: pre-wrap; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="screen">
+  <h1>FRND-clone Call</h1>
+  <p class="muted">Phase 4 demo: OTP login → join queue → Agora voice/video call.</p>
+
+  <!-- Login -->
+  <div id="loginCard" class="card">
+    <div id="step-phone">
+      <input id="phoneInput" placeholder="+91XXXXXXXXXX" />
+      <button class="big-btn" id="sendOtpBtn">Send OTP</button>
+    </div>
+    <div id="step-otp" class="hidden">
+      <input id="otpInput" placeholder="6-digit OTP" />
+      <button class="big-btn" id="verifyOtpBtn">Verify & Continue</button>
+    </div>
+  </div>
+
+  <!-- Queue -->
+  <div id="queueCard" class="card hidden">
+    <div class="row">
+      <select id="callTypeSelect">
+        <option value="voice">Voice</option>
+        <option value="video">Video</option>
+        <option value="text">Text</option>
+      </select>
+      <select id="languageSelect">
+        <option value="en">English</option>
+        <option value="hi">Hindi</option>
+        <option value="te">Telugu</option>
+        <option value="ta">Tamil</option>
+        <option value="kn">Kannada</option>
+        <option value="mr">Marathi</option>
+        <option value="pa">Punjabi</option>
+        <option value="bho">Bhojpuri</option>
+      </select>
+    </div>
+    <button class="big-btn" id="joinQueueBtn">Find someone to talk to</button>
+    <button class="big-btn secondary hidden" id="leaveQueueBtn">Cancel search</button>
+    <div class="muted" id="queueStatus" style="margin-top:8px;"></div>
+  </div>
+
+  <!-- In call -->
+  <div id="callStage" class="call-stage hidden">
+    <video id="remoteVideo" class="hidden" autoplay playsinline></video>
+    <video id="localVideo" class="hidden" autoplay playsinline muted></video>
+    <div class="avatar-circle" id="avatarPlaceholder">🎧</div>
+    <div class="call-status" id="callStatusText">Connecting...</div>
+    <div class="muted" id="partnerName"></div>
+    <div class="call-timer" id="balanceText"></div>
+  </div>
+
+  <div id="log" class="hidden"></div>
+</div>
+
+<div class="control-bar hidden" id="controlBar">
+  <button class="ctrl-btn active" id="muteBtn" title="Mute">🎤</button>
+  <button class="ctrl-btn active hidden" id="videoBtn" title="Video">📹</button>
+  <button class="ctrl-btn" id="skipBtn" title="Skip">⏭️</button>
+  <button class="ctrl-btn end" id="endBtn" title="End call">📞</button>
+</div>
+
+<!-- Low balance modal -->
+<div id="lowBalanceModal" class="modal-backdrop hidden">
+  <div class="modal-sheet">
+    <h2>⚠️ Balance running low</h2>
+    <p class="muted">Recharge now or the call will end automatically in <span id="countdown">30</span>s.</p>
+    <button class="big-btn" id="quickRechargeBtn">⚡ Quick 1-Tap Recharge (₹49)</button>
+    <button class="big-btn secondary" id="dismissWarningBtn">Dismiss</button>
+  </div>
+</div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.0.js"></script>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>
+  let accessToken = null;
+  let socket = null;
+  let rtcClient = null;
+  let localAudioTrack = null;
+  let localVideoTrack = null;
+  let currentSession = null; // { id, callType, language }
+  let countdownTimer = null;
+
+  const $ = (id) => document.getElementById(id);
+  function log(msg) {
+    const el = $('log');
+    el.classList.remove('hidden');
+    el.textContent += msg + '\n';
+    el.scrollTop = el.scrollHeight;
+  }
+
+  async function api(path, options = {}) {
+    const res = await fetch(path, {
+      method: options.method || 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: 'Bearer ' + accessToken } : {}),
+      },
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('Request failed: ' + res.status));
+    return data;
+  }
+
+  // ---------- Auth ----------
+  $('sendOtpBtn').addEventListener('click', async () => {
+    try {
+      await api('/api/auth/otp/request', { method: 'POST', body: { phone: $('phoneInput').value.trim() } });
+      $('step-phone').classList.add('hidden');
+      $('step-otp').classList.remove('hidden');
+    } catch (err) { log('Error: ' + err.message); }
+  });
+
+  $('verifyOtpBtn').addEventListener('click', async () => {
+    try {
+      const phone = $('phoneInput').value.trim();
+      const otp = $('otpInput').value.trim();
+      const result = await api('/api/auth/otp/verify', { method: 'POST', body: { phone, otp } });
+      accessToken = result.accessToken;
+      $('loginCard').classList.add('hidden');
+      $('queueCard').classList.remove('hidden');
+      connectSocket();
+    } catch (err) { log('Error: ' + err.message); }
+  });
+
+  // ---------- Socket / queue ----------
+  function connectSocket() {
+    socket = io({ auth: { token: accessToken } });
+
+    socket.on('connect_error', (e) => log('Socket error: ' + e.message));
+    socket.on('ERROR', (e) => log('ERROR: ' + e.message));
+    socket.on('QUEUE_JOINED', () => {
+      $('queueStatus').textContent = 'Searching for a match...';
+    });
+    socket.on('QUEUE_TIMEOUT', (e) => {
+      $('queueStatus').textContent = e.message;
+    });
+    socket.on('QUEUE_LEFT', () => {
+      $('queueStatus').textContent = '';
+    });
+
+    socket.on('MATCH_FOUND', async (e) => {
+      currentSession = { id: e.sessionId, callType: e.callType, language: e.language };
+      $('partnerName').textContent = 'Matched with ' + e.partner.nickname;
+      showCallStage();
+      if (e.callType === 'text') {
+        $('callStatusText').textContent = 'Text chat (messaging not built yet in this demo)';
+      } else {
+        await joinAgoraChannel(e.sessionId, e.callType);
+      }
+    });
+
+    socket.on('SESSION_ENDED', async (e) => {
+      log('SESSION_ENDED: ' + e.reason);
+      await leaveAgoraChannel();
+      hideLowBalanceModal();
+      currentSession = null;
+      showQueueStage();
+      $('queueStatus').textContent =
+        e.reason === 'insufficient_balance'
+          ? 'Call ended — your balance ran out. Recharge to keep chatting!'
+          : e.reason === 'partner_disconnected'
+          ? 'The other person disconnected.'
+          : e.reason === 'skipped'
+          ? 'Call ended.'
+          : 'Call ended.';
+    });
+
+    socket.on('TOKENS_DEDUCTED', (e) => {
+      $('balanceText').textContent = 'Balance: ' + e.balance + ' tokens';
+    });
+
+    socket.on('LOW_BALANCE_WARNING', () => {
+      showLowBalanceModal();
+    });
+  }
+
+  $('joinQueueBtn').addEventListener('click', () => {
+    const callType = $('callTypeSelect').value;
+    const language = $('languageSelect').value;
+    socket.emit('JOIN_QUEUE', { callType, language });
+    $('joinQueueBtn').classList.add('hidden');
+    $('leaveQueueBtn').classList.remove('hidden');
+    $('queueStatus').textContent = 'Joining queue...';
+  });
+
+  $('leaveQueueBtn').addEventListener('click', () => {
+    socket.emit('LEAVE_QUEUE');
+    $('joinQueueBtn').classList.remove('hidden');
+    $('leaveQueueBtn').classList.add('hidden');
+    $('queueStatus').textContent = '';
+  });
+
+  function showQueueStage() {
+    $('callStage').classList.add('hidden');
+    $('controlBar').classList.add('hidden');
+    $('queueCard').classList.remove('hidden');
+    $('joinQueueBtn').classList.remove('hidden');
+    $('leaveQueueBtn').classList.add('hidden');
+  }
+
+  function showCallStage() {
+    $('queueCard').classList.add('hidden');
+    $('callStage').classList.remove('hidden');
+    $('controlBar').classList.remove('hidden');
+    $('videoBtn').classList.toggle('hidden', currentSession.callType !== 'video');
+    $('callStatusText').textContent = 'Connected';
+  }
+
+  // ---------- Agora ----------
+  async function joinAgoraChannel(sessionId, callType) {
+    try {
+      const tokenInfo = await api('/api/calls/' + sessionId + '/token');
+
+      rtcClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+      await rtcClient.join(tokenInfo.appId, tokenInfo.channelName, tokenInfo.token, tokenInfo.uid);
+
+      localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+      await rtcClient.publish([localAudioTrack]);
+
+      if (callType === 'video') {
+        localVideoTrack = await AgoraRTC.createCameraVideoTrack();
+        await rtcClient.publish([localVideoTrack]);
+        const localVideoEl = $('localVideo');
+        localVideoEl.classList.remove('hidden');
+        localVideoTrack.play(localVideoEl);
+        $('avatarPlaceholder').classList.add('hidden');
+      }
+
+      rtcClient.on('user-published', async (user, mediaType) => {
+        await rtcClient.subscribe(user, mediaType);
+        if (mediaType === 'video') {
+          const remoteEl = $('remoteVideo');
+          remoteEl.classList.remove('hidden');
+          $('avatarPlaceholder').classList.add('hidden');
+          user.videoTrack.play(remoteEl);
+        }
+        if (mediaType === 'audio') {
+          user.audioTrack.play();
+        }
+      });
+
+      rtcClient.on('user-unpublished', () => {
+        $('remoteVideo').classList.add('hidden');
+      });
+
+      log('Joined Agora channel ' + tokenInfo.channelName + ' as uid ' + tokenInfo.uid);
+    } catch (err) {
+      log('Agora join failed: ' + err.message);
+      $('callStatusText').textContent = 'Could not start audio/video (' + err.message + ')';
+    }
+  }
+
+  async function leaveAgoraChannel() {
+    try {
+      if (localAudioTrack) { localAudioTrack.close(); localAudioTrack = null; }
+      if (localVideoTrack) { localVideoTrack.close(); localVideoTrack = null; }
+      if (rtcClient) { await rtcClient.leave(); rtcClient = null; }
+    } catch (err) { log('Agora leave error: ' + err.message); }
+    $('remoteVideo').classList.add('hidden');
+    $('localVideo').classList.add('hidden');
+    $('avatarPlaceholder').classList.remove('hidden');
+  }
+
+  // ---------- Controls ----------
+  $('muteBtn').addEventListener('click', () => {
+    if (!localAudioTrack) return;
+    const nowMuted = localAudioTrack.muted !== true;
+    localAudioTrack.setMuted(nowMuted);
+    $('muteBtn').classList.toggle('active', !nowMuted);
+    $('muteBtn').textContent = nowMuted ? '🔇' : '🎤';
+  });
+
+  $('videoBtn').addEventListener('click', async () => {
+    if (!localVideoTrack) return;
+    const enabled = !localVideoTrack.enabled;
+    await localVideoTrack.setEnabled(enabled);
+    $('videoBtn').classList.toggle('active', enabled);
+  });
+
+  $('skipBtn').addEventListener('click', () => {
+    socket.emit('SKIP_USER');
+  });
+
+  $('endBtn').addEventListener('click', () => {
+    socket.emit('END_CALL');
+  });
+
+  // ---------- Low balance modal ----------
+  function showLowBalanceModal() {
+    $('lowBalanceModal').classList.remove('hidden');
+    let secondsLeft = 30;
+    $('countdown').textContent = secondsLeft;
+    clearInterval(countdownTimer);
+    countdownTimer = setInterval(() => {
+      secondsLeft -= 1;
+      $('countdown').textContent = Math.max(secondsLeft, 0);
+      if (secondsLeft <= 0) clearInterval(countdownTimer);
+    }, 1000);
+  }
+
+  function hideLowBalanceModal() {
+    $('lowBalanceModal').classList.add('hidden');
+    clearInterval(countdownTimer);
+  }
+
+  $('dismissWarningBtn').addEventListener('click', hideLowBalanceModal);
+
+  $('quickRechargeBtn').addEventListener('click', async () => {
+    try {
+      const order = await api('/api/payments/orders', { method: 'POST', body: { packId: 'popular' } });
+      const rzp = new Razorpay({
+        key: order.keyId,
+        amount: order.amountPaise,
+        currency: order.currency,
+        order_id: order.razorpayOrderId,
+        name: 'Quick Recharge',
+        description: order.pack.name,
+        handler: function () {
+          log('Recharge submitted — balance will update once the webhook confirms it.');
+          hideLowBalanceModal();
+        },
+      });
+      rzp.open();
+    } catch (err) {
+      log('Recharge failed: ' + err.message);
+    }
+  });
+</script>
+</body>
+</html>

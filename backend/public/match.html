@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Matchmaking Test Harness</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: system-ui, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px 16px; background:#0f1115; color:#eee; }
+  h1 { font-size: 1.3rem; margin-bottom: 4px; }
+  .muted { color: #999; font-size: 0.85rem; }
+  .card { background:#1a1d24; border-radius: 12px; padding: 16px; margin: 12px 0; }
+  input, select { width:100%; padding:10px; margin:6px 0; border-radius:8px; border:1px solid #333; background:#111; color:#eee; box-sizing:border-box; }
+  button { padding:10px 16px; border:none; border-radius:8px; background:#6c5ce7; color:#fff; font-size:0.95rem; font-weight:600; cursor:pointer; margin:4px 4px 4px 0; }
+  button:disabled { opacity:0.5; cursor:not-allowed; }
+  button.secondary { background:#333; }
+  .row { display:flex; gap: 8px; }
+  .row > * { flex: 1; }
+  #log { background:#111; border-radius:8px; padding:10px; height: 260px; overflow-y:auto; font-family: ui-monospace, monospace; font-size: 0.8rem; white-space: pre-wrap; }
+  .hidden { display:none; }
+  .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:#262a33; font-size:0.75rem; margin-left:6px; }
+</style>
+</head>
+<body>
+  <h1>Matchmaking Test Harness</h1>
+  <p class="muted">Open this page in two tabs (or two browsers), log in as two different phone numbers, and join the same queue to see them get matched. This is a dev/QA tool, not the Phase 4 call UI.</p>
+
+  <div id="loginCard" class="card">
+    <div id="step-phone">
+      <input id="phoneInput" placeholder="+91XXXXXXXXXX" />
+      <button id="sendOtpBtn">Send OTP</button>
+    </div>
+    <div id="step-otp" class="hidden">
+      <input id="otpInput" placeholder="6-digit OTP" />
+      <button id="verifyOtpBtn">Verify & Connect</button>
+    </div>
+  </div>
+
+  <div id="queueCard" class="card hidden">
+    <div class="row">
+      <select id="callTypeSelect">
+        <option value="text">Text</option>
+        <option value="voice">Voice</option>
+        <option value="video">Video</option>
+      </select>
+      <select id="languageSelect">
+        <option value="en">English</option>
+        <option value="hi">Hindi</option>
+        <option value="te">Telugu</option>
+        <option value="ta">Tamil</option>
+        <option value="kn">Kannada</option>
+        <option value="mr">Marathi</option>
+        <option value="pa">Punjabi</option>
+        <option value="bho">Bhojpuri</option>
+      </select>
+    </div>
+    <button id="joinQueueBtn">Join Queue</button>
+    <button id="leaveQueueBtn" class="secondary">Leave Queue</button>
+  </div>
+
+  <div id="sessionCard" class="card hidden">
+    <div>In session <span class="pill" id="sessionCallType"></span></div>
+    <div class="muted" id="partnerInfo"></div>
+    <div class="muted" id="balanceInfo"></div>
+    <button id="skipBtn">Skip</button>
+    <button id="endCallBtn" class="secondary">End Call</button>
+  </div>
+
+  <div class="card">
+    <div class="muted" style="margin-bottom:6px;">Event log</div>
+    <div id="log"></div>
+  </div>
+
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script>
+    let accessToken = null;
+    let socket = null;
+    const $ = (id) => document.getElementById(id);
+
+    function log(msg) {
+      const el = $('log');
+      const time = new Date().toLocaleTimeString();
+      el.textContent += `[${time}] ${msg}\n`;
+      el.scrollTop = el.scrollHeight;
+    }
+
+    async function api(path, options = {}) {
+      const res = await fetch(path, {
+        method: options.method || 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken ? { Authorization: 'Bearer ' + accessToken } : {}),
+        },
+        body: options.body ? JSON.stringify(options.body) : undefined,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ('Request failed: ' + res.status));
+      return data;
+    }
+
+    $('sendOtpBtn').addEventListener('click', async () => {
+      try {
+        await api('/api/auth/otp/request', { method: 'POST', body: { phone: $('phoneInput').value.trim() } });
+        $('step-phone').classList.add('hidden');
+        $('step-otp').classList.remove('hidden');
+        log('OTP sent — check backend logs (SMS_PROVIDER=console).');
+      } catch (err) {
+        log('Error: ' + err.message);
+      }
+    });
+
+    $('verifyOtpBtn').addEventListener('click', async () => {
+      try {
+        const phone = $('phoneInput').value.trim();
+        const otp = $('otpInput').value.trim();
+        const result = await api('/api/auth/otp/verify', { method: 'POST', body: { phone, otp } });
+        accessToken = result.accessToken;
+        $('loginCard').classList.add('hidden');
+        $('queueCard').classList.remove('hidden');
+        connectSocket();
+      } catch (err) {
+        log('Error: ' + err.message);
+      }
+    });
+
+    function connectSocket() {
+      socket = io({ auth: { token: accessToken } });
+
+      socket.on('connect', () => log('Socket connected: ' + socket.id));
+      socket.on('disconnect', () => log('Socket disconnected'));
+      socket.on('ERROR', (e) => log('ERROR: ' + JSON.stringify(e)));
+
+      socket.on('QUEUE_JOINED', (e) => log('QUEUE_JOINED: ' + JSON.stringify(e)));
+      socket.on('QUEUE_LEFT', () => log('QUEUE_LEFT'));
+      socket.on('QUEUE_TIMEOUT', (e) => log('QUEUE_TIMEOUT: ' + e.message));
+
+      socket.on('MATCH_FOUND', (e) => {
+        log('MATCH_FOUND: ' + JSON.stringify(e));
+        $('queueCard').classList.add('hidden');
+        $('sessionCard').classList.remove('hidden');
+        $('sessionCallType').textContent = e.callType + ' / ' + e.language;
+        $('partnerInfo').textContent = 'Matched with: ' + e.partner.nickname;
+        $('balanceInfo').textContent = '';
+      });
+
+      socket.on('SESSION_ENDED', (e) => {
+        log('SESSION_ENDED: ' + JSON.stringify(e));
+        $('sessionCard').classList.add('hidden');
+        $('queueCard').classList.remove('hidden');
+      });
+
+      socket.on('TOKENS_DEDUCTED', (e) => {
+        log('TOKENS_DEDUCTED: -' + e.amount + ' (balance: ' + e.balance + ')');
+        $('balanceInfo').textContent = 'Balance: ' + e.balance + ' tokens';
+      });
+
+      socket.on('LOW_BALANCE_WARNING', (e) => {
+        log('LOW_BALANCE_WARNING: balance=' + e.balance + ' needed=' + e.tokensNeededPerMinute);
+      });
+    }
+
+    $('joinQueueBtn').addEventListener('click', () => {
+      const callType = $('callTypeSelect').value;
+      const language = $('languageSelect').value;
+      socket.emit('JOIN_QUEUE', { callType, language });
+      log('-> JOIN_QUEUE ' + callType + '/' + language);
+    });
+
+    $('leaveQueueBtn').addEventListener('click', () => {
+      socket.emit('LEAVE_QUEUE');
+      log('-> LEAVE_QUEUE');
+    });
+
+    $('skipBtn').addEventListener('click', () => {
+      socket.emit('SKIP_USER');
+      log('-> SKIP_USER');
+    });
+
+    $('endCallBtn').addEventListener('click', () => {
+      socket.emit('END_CALL');
+      log('-> END_CALL');
+    });
+  </script>
+</body>
+</html>
